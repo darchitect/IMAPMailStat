@@ -24,8 +24,40 @@
 import argparse
 import logging
 import getpass
+import re
 
 from imaplib import IMAP4, IMAP4_SSL
+
+# based on https://stackoverflow.com/questions/703185/using-email-headerparser-with-imaplib-fetch-in-python
+from email.parser import HeaderParser
+
+class Folder:
+
+    _name = None
+    _has_children = False
+
+    def __init__(self, name, has_children=False):
+        self._name = name
+        self._has_children = has_children
+
+    # Static method
+    def parse_list(self, data):
+        # ("Child indicator" "optional name") "/" 
+        # Folder name - may have spaces.
+        # f = re.compile( '^\(([A-Za-z]+)' )
+        # Group 1 = child indicator
+        # Group 2 (opt) = server name
+        # Group 3 = folder seperator
+        # Group 4 = Folder name
+        # call groups before to see how many
+        f = re.compile( r'^\(\\(?P<children>[A-Za-z]+)(\s\\(?P<server_name>[A-Za-z])+)?\)\s(?P<seperator>\S{3})\s(?P<folder_name>.+)$' )
+        matches = f.match( data ).groupdict()
+        self._name = matches['folder_name']
+        self._has_children = True if matches['children'] == "HasChildren" else False
+        
+    def __str__(self):
+        return "[Folder: {0}, Children: {1}]".format( self._name, self._has_children )            
+
 
 def parse_arguments():
     '''Setup and parse the options for this script'''
@@ -61,15 +93,33 @@ def log_startup_options( args ):
     '''capture startup args in the log'''
     logging.info( "Arguments [{0}]".format( args ))
 
+def load_account():
+    '''
+    Load account infomation from a file so the user/password
+    isn't supplied every time
+    '''
+    pass
+
 def test_mail( args ):
     logging.debug( "Connecting to Server" )
     M = IMAP4_SSL( args.imap, args.port )
     logging.debug( "Password" )
     M.login(args.user, getpass.getpass())
-    M.select()
-    typ, data = M.search(None, 'ALL')
+    resp, data = M.select('INBOX', readonly=True )
+    print "Number of messages in: %s is %s\n" % ('INBOX', data)
+    for folder in  M.list()[1]:
+        # ("Child indicator" "optional name") "/" 
+        # Folder name - may have spaces.
+        f = Folder()
+        f.parse_list( folder )
+        print f
+
+    resp, data = M.search(None, 'ALL')
     for num in data[0].split():
-        print 'Message %s\n' % (num)
+        resp, header_data = M.fetch(num, '(BODY[HEADER])')
+        parser = HeaderParser()
+        msg = parser.parsestr( header_data[0][1] )
+        #print 'Message %s:%s\n' % (num, msg['Subject'])
     M.close()
     M.logout()
 

@@ -4,6 +4,8 @@ Mailstat is part of the procmail package. IT would be used to process the procma
 
 .h1 Output
 
+The output should have the following attributes
+
 * folder
 * total size
 * average size
